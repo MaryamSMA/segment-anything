@@ -94,7 +94,8 @@ class Sam(nn.Module):
                 shape BxCxHxW, where H=W=256. Can be passed as mask input
                 to subsequent iterations of prediction.
         """
-        input_images = torch.stack([self.preprocess(x["image"]) for x in batched_input], dim=0)
+        #input_images = torch.stack([self.preprocess(x["image"]) for x in batched_input], dim=0)
+        input_images = torch.stack([self.preprocessQ(x["image"]) for x in batched_input], dim=0)
         image_embeddings = self.image_encoder(input_images)
 
         outputs = []
@@ -172,3 +173,15 @@ class Sam(nn.Module):
         padw = self.image_encoder.img_size - w
         x = F.pad(x, (0, padw, 0, padh))
         return x
+
+    def preprocessQ(self, x: torch.Tensor) -> torch.Tensor:
+            """Normalize pixel values and pad to a square input."""
+            # Normalize colors
+            x = (x - self.pixel_mean) / self.pixel_std
+    
+            # Pad
+            h, w = x.shape[-2:]
+            padh = self.image_encoder.img_size - h
+            padw = self.image_encoder.img_size - w
+            x = F.pad(x, (0, padw, 0, padh))
+            return x
