@@ -1,0 +1,3 @@
+[submodule "notebooks/notebooks/shapes"]
+	path = notebooks/notebooks/shapes
+	url = https://github.com/cjpurackal/shapes.git
