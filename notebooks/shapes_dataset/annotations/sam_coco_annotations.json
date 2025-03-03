@@ -1,0 +1,47 @@
+{
+    "images": [
+        {
+            "id": 0,
+            "width": 128,
+            "height": 128,
+            "file_name": "shapes_0.png"
+        },
+        {
+            "id": 1,
+            "width": 128,
+            "height": 128,
+            "file_name": "shapes_1.png"
+        },
+        {
+            "id": 2,
+            "width": 128,
+            "height": 128,
+            "file_name": "shapes_2.png"
+        },
+        {
+            "id": 3,
+            "width": 128,
+            "height": 128,
+            "file_name": "shapes_3.png"
+        },
+        {
+            "id": 4,
+            "width": 128,
+            "height": 128,
+            "file_name": "shapes_4.png"
+        }
+    ],
+    "annotations": [],
+    "categories": [
+        {
+            "id": 1,
+            "name": "circle",
+            "supercategory": "shape"
+        },
+        {
+            "id": 2,
+            "name": "rect",
+            "supercategory": "shape"
+        }
+    ]
+}
