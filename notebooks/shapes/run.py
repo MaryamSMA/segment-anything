@@ -10,7 +10,6 @@ import cv2
 # 🔹 Define Dataset Parameters
 # ============================
 colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'black', 'white']
-shape_attribs = {'rect': [4, 4], 'circle': [3]}  # Shape sizes auto-adjust
 categories = [
     {"id": 1, "name": "circle", "supercategory": "shape"},
     {"id": 2, "name": "rect", "supercategory": "shape"}
@@ -21,7 +20,7 @@ categories = [
 # ============================
 parser = argparse.ArgumentParser()
 parser.add_argument("--save_dir", type=str, help="Dataset save directory")
-parser.add_argument("--image_size", nargs=2, default=[500, 500], type=int)  # Dynamically controlled
+parser.add_argument("--image_size", nargs=2, default=[128, 128], type=int)  # Dynamically controlled
 parser.add_argument("--num_images", type=int, default=10)
 parser.add_argument("--shapes", nargs='+', default=['circle', 'rect'])
 parser.add_argument("--shape_color", type=str, default='blue')
@@ -62,25 +61,25 @@ annotation_id = 1
 # ============================
 # 🔹 Shape Generation Functions
 # ============================
-def make_shape(x, y, shape_type):
-    """ Creates a shape (circle or rectangle) at (x, y). """
+def make_shape(x, y, shape_type, shape_size):
+    """ Creates a shape (circle or rectangle) at (x, y) with a given size. """
     color = shape_color if not shuffle_color else np.random.choice(colors)
 
     if shape_type == "rect":
-        return plt.Rectangle((x, y), shape_attribs["rect"][0], shape_attribs["rect"][1], color=color)
+        return plt.Rectangle((x, y), shape_size, shape_size, color=color)
     elif shape_type == "circle":
-        return plt.Circle((x, y), shape_attribs["circle"][0], color=color)
+        return plt.Circle((x, y), shape_size, color=color)
 
-def gen_bbox(x, y, shape_type):
+def gen_bbox(x, y, shape_type, shape_size):
     """ Generates a bounding box for the shape. """
     if shape_type == "rect":
-        return [x, y, shape_attribs["rect"][0], shape_attribs["rect"][1]]
+        return [x, y, shape_size, shape_size]
     elif shape_type == "circle":
         return [
-            x - shape_attribs["circle"][0],
-            y - shape_attribs["circle"][0],
-            2 * shape_attribs["circle"][0],
-            2 * shape_attribs["circle"][0]
+            x - shape_size,
+            y - shape_size,
+            2 * shape_size,
+            2 * shape_size
         ]
 
 # ============================
@@ -96,8 +95,11 @@ for img_id in tqdm.tqdm(range(num_images), desc="Generating dataset"):
         shape_type = np.random.choice(shapes)
         x, y = np.random.randint(2, image_w - 2), np.random.randint(2, image_h - 2)
 
-        objs.append(make_shape(x, y, shape_type))
-        obj_bboxes.append((shape_type, gen_bbox(x, y, shape_type)))
+        # Dynamically set shape size based on image size (e.g., 10% of the image width)
+        shape_size = np.random.randint(image_w // 10, image_w // 5)  # Size between 10% to 20% of image width
+
+        objs.append(make_shape(x, y, shape_type, shape_size))
+        obj_bboxes.append((shape_type, gen_bbox(x, y, shape_type, shape_size)))
 
     # Save Image
     fig, ax = plt.subplots(figsize=(image_w / 100, image_h / 100), dpi=100)  # Dynamically adapt size
