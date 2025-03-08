@@ -76,10 +76,10 @@ def gen_bbox(x, y, shape_type, shape_size):
         return [x, y, shape_size, shape_size]
     elif shape_type == "circle":
         return [
-            x - shape_size,
-            y - shape_size,
-            2 * shape_size,
-            2 * shape_size
+            x - shape_size,  # Adjusting for left side of bounding box
+            y - shape_size,  # Adjusting for top side of bounding box
+            2 * shape_size,  # Width of bounding box for the circle
+            2 * shape_size   # Height of bounding box for the circle
         ]
 
 # ============================
@@ -122,6 +122,7 @@ for img_id in tqdm.tqdm(range(num_images), desc="Generating dataset"):
         "width": image_w,
         "height": image_h,
         "file_name": img_filename
+        #"license": None  # Set license to None or any appropriate value
     })
 
     for shape_type, bbox in obj_bboxes:
@@ -133,6 +134,7 @@ for img_id in tqdm.tqdm(range(num_images), desc="Generating dataset"):
             "segmentation": [],  # To be filled after SAM
             "area": bbox[2] * bbox[3],
             "iscrowd": 0
+            #"license": None  # License can be null for annotations, or set as needed
         })
         annotation_id += 1
 
