@@ -5,6 +5,7 @@ import os
 import tqdm
 import argparse
 import cv2
+from PIL import Image
 
 # ============================
 # 🔹 Define Dataset Parameters
@@ -113,8 +114,16 @@ for img_id in tqdm.tqdm(range(num_images), desc="Generating dataset"):
 
     img_filename = f"shapes_{img_id}.png"
     img_filepath = os.path.join(img_path, img_filename)
-    fig.savefig(img_filepath, dpi=100, bbox_inches="tight", pad_inches=0)
+
+    # Print dimensions before saving
+    print(f"Before saving - Image dimensions: {image_w}x{image_h} (width x height)")
+    
+    fig.savefig(img_filepath, dpi=100)
     plt.close()
+
+    # Print dimensions after saving
+    with Image.open(img_filepath) as img:
+        print(f"After saving - Image dimensions: {img.size[0]}x{img.size[1]} (width x height)")  # img.size returns (width, height)
 
     # Save to COCO Format
     coco_data["images"].append({
@@ -122,7 +131,6 @@ for img_id in tqdm.tqdm(range(num_images), desc="Generating dataset"):
         "width": image_w,
         "height": image_h,
         "file_name": img_filename
-        #"license": None  # Set license to None or any appropriate value
     })
 
     for shape_type, bbox in obj_bboxes:
@@ -134,7 +142,6 @@ for img_id in tqdm.tqdm(range(num_images), desc="Generating dataset"):
             "segmentation": [],  # To be filled after SAM
             "area": bbox[2] * bbox[3],
             "iscrowd": 0
-            #"license": None  # License can be null for annotations, or set as needed
         })
         annotation_id += 1
 
