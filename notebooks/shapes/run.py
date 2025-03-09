@@ -71,10 +71,12 @@ def make_shape(x, y, shape_type, shape_size):
     elif shape_type == "circle":
         return plt.Circle((x, y), shape_size, color=color)
 
-def gen_bbox(x, y, shape_type, shape_size):
+def gen_bbox(x, y, shape_type, shape_size, aspect_ratio=1.0):
     """ Generates a bounding box for the shape. """
     if shape_type == "rect":
-        return [x, y, shape_size, shape_size]
+        width = shape_size * aspect_ratio  # Allow non-square rectangles
+        height = shape_size  # Height remains the same
+        return [x, y, width, height]
     elif shape_type == "circle":
         return [
             x - shape_size,  # Adjusting for left side of bounding box
@@ -82,6 +84,11 @@ def gen_bbox(x, y, shape_type, shape_size):
             2 * shape_size,  # Width of bounding box for the circle
             2 * shape_size   # Height of bounding box for the circle
         ]
+
+
+    # Print bounding box coordinates
+    print(f"Generated bounding box: {bbox}")  # x, y, width, height
+    print(f"Generated shape size: {shape_size}")
 
 # ============================
 # 🔹 Generate Dataset
@@ -117,13 +124,23 @@ for img_id in tqdm.tqdm(range(num_images), desc="Generating dataset"):
 
     # Print dimensions before saving
     print(f"Before saving - Image dimensions: {image_w}x{image_h} (width x height)")
-    
-    fig.savefig(img_filepath, dpi=100)
+
+    fig.savefig(img_filepath)  # Save the image
     plt.close()
 
     # Print dimensions after saving
     with Image.open(img_filepath) as img:
         print(f"After saving - Image dimensions: {img.size[0]}x{img.size[1]} (width x height)")  # img.size returns (width, height)
+
+    # Visualize the generated image after saving
+    img_show = cv2.imread(img_filepath)
+    img_show_rgb = cv2.cvtColor(img_show, cv2.COLOR_BGR2RGB)
+
+    # Display the image inline in the notebook
+    plt.imshow(img_show_rgb)
+    plt.title(f"Generated Image {img_filename}")  # Adding title to the plot for clarity
+    plt.axis('off')  # Hide axes for better visualization
+    plt.show()  # This will make sure the image gets displayed in the notebook
 
     # Save to COCO Format
     coco_data["images"].append({
