@@ -71,11 +71,12 @@ def make_shape(x, y, shape_type, shape_size):
     elif shape_type == "circle":
         return plt.Circle((x, y), shape_size, color=color)
 
-def gen_bbox(x, y, shape_type, shape_size, aspect_ratio=1.0):
+def gen_bbox(x, y, shape_type, shape_size):
+    print(f"Generated shape size: {shape_size}")
     """ Generates a bounding box for the shape. """
     if shape_type == "rect":
-        width = shape_size * aspect_ratio  # Allow non-square rectangles
-        height = shape_size  # Height remains the same
+        width = (shape_size) 
+        height = (shape_size)  # Height remains the same
         return [x, y, width, height]
     elif shape_type == "circle":
         return [
