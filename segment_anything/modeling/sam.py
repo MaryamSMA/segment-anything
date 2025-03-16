@@ -5,8 +5,6 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
-import pennylane as qml
-import numpy as np
 from torch import nn
 from torch.nn import functional as F
 
@@ -96,7 +94,6 @@ class Sam(nn.Module):
                 shape BxCxHxW, where H=W=256. Can be passed as mask input
                 to subsequent iterations of prediction.
         """
-        #input_images = torch.stack([self.preprocess(x["image"]) for x in batched_input], dim=0)
         input_images = torch.stack([self.preprocess(x["image"]) for x in batched_input], dim=0)
         image_embeddings = self.image_encoder(input_images)
 
@@ -175,34 +172,3 @@ class Sam(nn.Module):
         padw = self.image_encoder.img_size - w
         x = F.pad(x, (0, padw, 0, padh))
         return x
-    # Define the number of qubits based on the dataset
-    n_qubits = 4  # This depends on how many features you want to encode
-    dev = qml.device("default.qubit", wires=n_qubits)
-    
-    @qml.qnode(dev, interface="torch")
-    def quantum_embedding(x):
-        """Quantum circuit to encode image data into qubits."""
-        for i in range(n_qubits):
-            qml.RY(x[i], wires=i)  # Encode pixel intensity as quantum rotation
-        return qml.state()
-    
-    def preprocessQ(self, x: torch.Tensor) -> torch.Tensor:
-        """Fully Quantum Preprocessing using Quantum Embeddings."""
-        
-        # Normalize pixel values (classical step)
-        x = (x - self.pixel_mean) / self.pixel_std
-        
-        # Convert tensor to numpy (required for quantum processing)
-        x_np = x.numpy().flatten()[:n_qubits]  # Select only first n_qubits pixels
-    
-        # Apply Quantum Encoding (Quantum Feature Map)
-        quantum_features = quantum_embedding(x_np)
-    
-        # Convert back to tensor
-        quantum_tensor = torch.tensor(quantum_features, dtype=torch.float32)
-        
-        return quantum_tensor
-
-
-
-
