@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple, Type
+from tqdm import tqdm
 import pennylane as qml
 
 from .common import LayerNorm2d, MLPBlock
@@ -15,113 +16,72 @@ from .common import LayerNorm2d, MLPBlock
 # ----------------------
 # Quantum Module for Attention with Embedding Type Option
 # ----------------------
+import pennylane as qml
+import torch
+from torch import nn
+
 class QuantumAttentionModule(nn.Module):
-    def __init__(self, input_dim: int, n_qubits: int = 4, embedding_type: str = "rotation"):
+    def __init__(self, input_dim: int, n_qubits: int = 8, embedding_type: str = "amplitude"):
         """
-        Processes an input feature vector of dimension input_dim by reducing it
-        to n_qubits, applying a quantum circuit with either rotation‐based or amplitude embedding,
-        and then expanding it back.
-        
-        Args:
-            input_dim: Dimension of the input token (e.g., head dimension).
-            n_qubits: Number of qubits to use.
-            embedding_type: Which embedding method to use. Options are:
-                "rotation" (default) – use RY/RZ rotations,
-                "amplitude" – use amplitude embedding.
+        Quantum attention module using parameterized quantum circuits for feature extraction.
+        This version uses:
+        - Amplitude embedding for full feature representation
+        - Parametrized RY, RX gates for learnable transformations
+        - CNOT gates for entanglement
+        - qml.probs() for full amplitude extraction
         """
         super().__init__()
         self.n_qubits = n_qubits
         self.embedding_type = embedding_type
-        print("[QuantumAttentionModule] Using embedding type:", self.embedding_type)
-        #self.reducer = nn.Linear(input_dim, n_qubits)
-        if self.embedding_type == "amplitude":
-            self.reducer = nn.Linear(input_dim, 2 ** n_qubits)
-        else:
-            self.reducer = nn.Linear(input_dim, n_qubits)
-        self.q_weights = nn.Parameter(torch.randn(n_qubits))
-        self.dev = qml.device("default.qubit", wires=n_qubits)
-        self.expander = nn.Linear(n_qubits, input_dim)
-        # Flag to print normalization debug info only once per forward pass.
-        self._printed_norm_debug = False
 
-    def quantum_circuit(self, x, weights):
-        if self.embedding_type == "rotation":
-            # Rotation-based embedding: apply RY and RZ gates.
-            for i in range(self.n_qubits):
-                qml.RY(x[i], wires=i)
-            for i in range(self.n_qubits):
-                qml.RZ(weights[i], wires=i)
-            for i in range(self.n_qubits - 1):
-                qml.CNOT(wires=[i, i+1])
-        elif self.embedding_type == "amplitude":
-            # Amplitude embedding expects a normalized vector of length 2^n.
-            required_length = 2 ** self.n_qubits
-            if x.shape[0] < required_length:
-                padding = required_length - x.shape[0]
-                x = torch.cat([x, torch.zeros(padding, dtype=x.dtype, device=x.device)], dim=0)
-            
-            # ------------------ ADDED: Begin simple smoothing enhancement ------------------
-            # Instead of using a gradient filter (Sobel), we apply a simple 1D average pooling 
-            # to create a smoothed version of the vector. This can help reduce noise and capture 
-            # prominent transitions without the artifacts of a gradient filter.
-            x_unsqueezed = x.unsqueeze(0).unsqueeze(0)  # shape: [1, 1, required_length]
-            kernel_size = 3  # You can adjust this kernel size as needed
-            smoothed = F.avg_pool1d(x_unsqueezed, kernel_size=kernel_size, stride=1, padding=1)
-            smoothed = smoothed.squeeze()  # shape: [required_length]
-            # Combine the original vector with its smoothed version using a weighted sum.
-            alpha = 0.5  # ADJUST: Experiment with this weight to control the influence of smoothing.
-            x = x + alpha * smoothed
-            # ------------------ ADDED: End simple smoothing enhancement ------------------
-            
-            # Normalize the vector (using L2 norm).
-            norm = x.norm(p=2)
-            if not self._printed_norm_debug:
-                print("Before normalization, L2 norm:", norm.item(),
-                      "and stats:", x.min().item(), x.max().item(), x.mean().item())
-                self._printed_norm_debug = True
-            if norm > 0:
-                x_normalized = x / norm
-            else:
-                x_normalized = x
-            qml.AmplitudeEmbedding(x_normalized, wires=range(self.n_qubits), normalize=False)
-        else:
-            raise ValueError(f"Unsupported embedding_type: {self.embedding_type}")
-        return [qml.expval(qml.PauliZ(i)) for i in range(self.n_qubits)]
+        self.reducer = nn.Linear(input_dim, 2 ** n_qubits)  # Match classical input to quantum qubit space
+        
+        #self.reducer = nn.Linear(input_dim, self.n_qubits)  # trial: Reduce to exactly 8 features
+        #self.reducer = nn.Linear(input_dim, orig_shape[-1])  # trial: Ensures the same final dimension
+
+
+        self.q_weights = nn.Parameter(torch.randn(n_qubits, 3,dtype=torch.float32))  # Three learnable params per qubit (RX, RY, RZ)
+        
+        self.dev = qml.device("lightning.qubit", wires=n_qubits)  # Use lightning.qubit for efficiency
+        
+        # **NEW: Projection layer to downsample quantum output**
+        self.downsampler = nn.Linear(2 ** n_qubits, input_dim)  # Reduce from 256 → 64
+
+
+    def quantum_circuit(self, x):
+        """Quantum feature extraction circuit with entanglement and learnable parameters."""
+        # 1. Amplitude Embedding
+        qml.AmplitudeEmbedding(x, wires=range(self.n_qubits), normalize=True) #pad_with=0.0,
+
+        # 2. Apply Trainable Parametrized Gates (RX, RY, RZ)
+        for i in range(self.n_qubits):
+            qml.RX(self.q_weights[i, 0], wires=i)
+            qml.RY(self.q_weights[i, 1], wires=i)
+            qml.RZ(self.q_weights[i, 2], wires=i)
+
+        # 3. Apply Entanglement (CNOTs in a Ring Topology)
+        for i in range(self.n_qubits - 1):
+            qml.CNOT(wires=[i, i + 1])
+        qml.CNOT(wires=[self.n_qubits - 1, 0])  # Connect last to first (cyclic entanglement)
+
+        # 4. Use qml.probs() to extract full probability vector (2^n_qubits outputs)
+        return qml.probs(wires=range(self.n_qubits))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Reset the normalization debug flag for this forward pass.
-        self._printed_norm_debug = False
-
-        print("[QuantumAttentionModule] Input image shape:", x.shape) # Debug: original image dimensions
-        x_reduced = self.reducer(x).float()
-        print("[QuantumAttentionModule] Reduced tensor shape:", x_reduced.shape) # Expect (B, H_patch, W_patch, embed_dim)
-
-        # (Optional) Print summary stats of x_reduced if needed:
-        print("[QuantumAttentionModule] Reduced tensor stats: min =", x_reduced.min().item(),
-              "max =", x_reduced.max().item(), "mean =", x_reduced.mean().item())
-
-        outputs = []
+        """Run the quantum circuit on reduced input and return extracted features."""
+        x_reduced = self.reducer(x).float()  # Reduce classical input to 2^n_qubits
         qnode = qml.QNode(self.quantum_circuit, self.dev, interface="torch")
-        for idx, sample in enumerate(x_reduced):
-            sample = sample.float()
-            # Optionally, print sample stats for the first sample.
-            if idx == 0:
-                print("[QuantumAttentionModule] First sample before quantum circuit:", sample)
-            q_out = qnode(sample, self.q_weights.float())
-            if idx == 0:
-                quantum_out = torch.tensor(q_out)
-                print("[QuantumAttentionModule] quantum_out shape (first sample):", quantum_out.shape)
-                # Optionally, print quantum_out values for debugging.
-                print("[QuantumAttentionModule] quantum_out values (first sample):", quantum_out)
-            outputs.append(torch.stack(q_out))
-        quantum_features = torch.stack(outputs)
+        #outputs = torch.stack([torch.tensor(qnode(sample)) for sample in x_reduced])
+        outputs = torch.stack([qnode(sample).clone().detach() for sample in x_reduced])
 
-        # Optionally, print shape and stats of quantum_features
-        print("[QuantumAttentionModule] Quantum features shape before expansion:", quantum_features.shape)
+        
+        # 🔹 Ensure outputs match PyTorch's expected float32
+        outputs = outputs.to(x.device).float()
+        
+        # 🔹 **Apply new downsampler to reduce 256 → 64**
+        outputs = self.downsampler(outputs)  
 
-        expanded = self.expander(quantum_features.float())
-        print("[QuantumAttentionModule] Expanded tensor shape:", expanded.shape)
-        return expanded
+        return outputs
 
 # ----------------------
 # Patch Embedding Module
@@ -181,11 +141,21 @@ class Attention(nn.Module):
         qkv = self.qkv(x).reshape(B, H * W, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
         q, k, v = qkv.reshape(3, B * self.num_heads, H * W, -1).unbind(0)
         if self.use_quantum:
-            orig_shape = q.shape
-            q_flat = q.reshape(-1, orig_shape[-1])
-            q_transformed = self.quantum_module(q_flat)
-            q = q_transformed.view(orig_shape)
+            orig_shape = q.shape  # Save original shape before quantum processing
+            q_flat = q.reshape(-1, orig_shape[-1])  # Flatten before passing to quantum
+
+            print("[DEBUG] Original q shape:", q.shape)
+            print("[DEBUG] q_flat shape (before quantum):", q_flat.shape)
+
+            q_transformed = self.quantum_module(q_flat)  # Apply Quantum Processing
+
+            print("[DEBUG] q_transformed shape:", q_transformed.shape)
+            print("[DEBUG] Expected orig_shape:", orig_shape)
+
+            q = q_transformed.view(orig_shape)  # Reshape back
+
         attn = (q * self.scale) @ k.transpose(-2, -1)
+
         if self.use_rel_pos:
             attn = add_decomposed_rel_pos(attn, q, self.rel_pos_h, self.rel_pos_w, (H, W), (H, W))
         attn = attn.softmax(dim=-1)
