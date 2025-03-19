@@ -33,7 +33,11 @@ class QuantumAttentionModule(nn.Module):
         self.n_qubits = n_qubits
         self.embedding_type = embedding_type
         print("[QuantumAttentionModule] Using embedding type:", self.embedding_type)
-        self.reducer = nn.Linear(input_dim, n_qubits)
+        #self.reducer = nn.Linear(input_dim, n_qubits)
+        if self.embedding_type == "amplitude":
+            self.reducer = nn.Linear(input_dim, 2 ** n_qubits)
+        else:
+            self.reducer = nn.Linear(input_dim, n_qubits)
         self.q_weights = nn.Parameter(torch.randn(n_qubits))
         self.dev = qml.device("default.qubit", wires=n_qubits)
         self.expander = nn.Linear(n_qubits, input_dim)
@@ -151,7 +155,7 @@ class Attention(nn.Module):
         use_rel_pos: bool = False,
         rel_pos_zero_init: bool = True,
         input_size: Optional[Tuple[int, int]] = None,
-        use_quantum: bool = True,
+        use_quantum: bool = False,
         n_qubits: int = 4,
         embedding_type: str = "rotation"
     ) -> None:
