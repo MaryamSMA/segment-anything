@@ -52,24 +52,22 @@ class QuantumAttentionModule(nn.Module):
         elif self.embedding_type == "amplitude":
             # Amplitude embedding expects a normalized vector of length 2^n.
             required_length = 2 ** self.n_qubits
-            # Ensure input vector has required length (Padding Dimensionality Adjustment - PDA)
             if x.shape[0] < required_length:
                 padding = required_length - x.shape[0]
                 x = torch.cat([x, torch.zeros(padding, dtype=x.dtype, device=x.device)], dim=0)
             
-            # ADDED: Apply a 1D edge detection filter to capture strong gradients/features.
-            # Here we compute a simple Sobel filter along the 1D vector.
-            # First, unsqueeze to add batch and channel dimensions (resulting shape: [1, 1, required_length]).
-            x_unsqueezed = x.unsqueeze(0).unsqueeze(0)  
-            # Define a simple 1D Sobel kernel. You may experiment with other kernels.
-            sobel_kernel = torch.tensor([[1.0, 0.0, -1.0]], dtype=x.dtype, device=x.device)  
-            # Apply 1D convolution with padding to preserve length.
-            edge = F.conv1d(x_unsqueezed, sobel_kernel.unsqueeze(0), padding=1)
-            edge = edge.squeeze()  # Back to shape: [required_length]
-            # Combine the original vector with its edge map via a weighted sum.
-            alpha = 0.5  # ADJUST: Weight of the edge information (experiment with this value)
-            x = x + alpha * edge
-            # END ADDED: Edge detection enhancement
+            # ------------------ ADDED: Begin simple smoothing enhancement ------------------
+            # Instead of using a gradient filter (Sobel), we apply a simple 1D average pooling 
+            # to create a smoothed version of the vector. This can help reduce noise and capture 
+            # prominent transitions without the artifacts of a gradient filter.
+            x_unsqueezed = x.unsqueeze(0).unsqueeze(0)  # shape: [1, 1, required_length]
+            kernel_size = 3  # You can adjust this kernel size as needed
+            smoothed = F.avg_pool1d(x_unsqueezed, kernel_size=kernel_size, stride=1, padding=1)
+            smoothed = smoothed.squeeze()  # shape: [required_length]
+            # Combine the original vector with its smoothed version using a weighted sum.
+            alpha = 0.5  # ADJUST: Experiment with this weight to control the influence of smoothing.
+            x = x + alpha * smoothed
+            # ------------------ ADDED: End simple smoothing enhancement ------------------
             
             # Normalize the vector (using L2 norm).
             norm = x.norm(p=2)
@@ -81,32 +79,44 @@ class QuantumAttentionModule(nn.Module):
                 x_normalized = x / norm
             else:
                 x_normalized = x
-            # Use amplitude embedding without further normalization.
             qml.AmplitudeEmbedding(x_normalized, wires=range(self.n_qubits), normalize=False)
         else:
             raise ValueError(f"Unsupported embedding_type: {self.embedding_type}")
-        # Return expectation values of PauliZ for each qubit.
         return [qml.expval(qml.PauliZ(i)) for i in range(self.n_qubits)]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Reset the normalization debug flag for this forward pass.
         self._printed_norm_debug = False
-        
-        print("[QuantumAttentionModule] Input tensor shape:", x.shape)
+
+        print("[QuantumAttentionModule] Input image shape:", x.shape) # Debug: original image dimensions
         x_reduced = self.reducer(x).float()
-        print("[QuantumAttentionModule] Reduced tensor shape:", x_reduced.shape)
+        print("[QuantumAttentionModule] Reduced tensor shape:", x_reduced.shape) # Expect (B, H_patch, W_patch, embed_dim)
+
+        # (Optional) Print summary stats of x_reduced if needed:
+        print("[QuantumAttentionModule] Reduced tensor stats: min =", x_reduced.min().item(),
+              "max =", x_reduced.max().item(), "mean =", x_reduced.mean().item())
+
         outputs = []
         qnode = qml.QNode(self.quantum_circuit, self.dev, interface="torch")
         for idx, sample in enumerate(x_reduced):
             sample = sample.float()
+            # Optionally, print sample stats for the first sample.
+            if idx == 0:
+                print("[QuantumAttentionModule] First sample before quantum circuit:", sample)
             q_out = qnode(sample, self.q_weights.float())
             if idx == 0:
                 quantum_out = torch.tensor(q_out)
                 print("[QuantumAttentionModule] quantum_out shape (first sample):", quantum_out.shape)
+                # Optionally, print quantum_out values for debugging.
+                print("[QuantumAttentionModule] quantum_out values (first sample):", quantum_out)
             outputs.append(torch.stack(q_out))
         quantum_features = torch.stack(outputs)
+
+        # Optionally, print shape and stats of quantum_features
+        print("[QuantumAttentionModule] Quantum features shape before expansion:", quantum_features.shape)
+
         expanded = self.expander(quantum_features.float())
-        print("[QuantumAttentionModule] expanded shape:", expanded.shape)
+        print("[QuantumAttentionModule] Expanded tensor shape:", expanded.shape)
         return expanded
 
 # ----------------------
@@ -141,7 +151,7 @@ class Attention(nn.Module):
         use_rel_pos: bool = False,
         rel_pos_zero_init: bool = True,
         input_size: Optional[Tuple[int, int]] = None,
-        use_quantum: bool = False,
+        use_quantum: bool = True,
         n_qubits: int = 4,
         embedding_type: str = "rotation"
     ) -> None:

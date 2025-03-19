@@ -40,3 +40,5 @@ _darcs
 **/node_modules
 yarn.lock
 package-lock.json
+# ADDED: Ignore the logs folder to avoid tracking large log files
+logs/
